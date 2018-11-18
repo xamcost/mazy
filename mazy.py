@@ -25,7 +25,7 @@ class Cell(object):
     def __init__(self, i, j):
         self.i, self.j = i, j
         self.walls = {'top':True, 'bottom':True, 'left':True, 'right':True}
-        self.toDeadEnd = False
+        self.visited = False
     
     def break_wall(self, other):
         """ 
@@ -60,6 +60,12 @@ class Cell(object):
             
     def __repr__(self):
         return 'cell at ({0}, {1})'.format(self.i, self.j)
+    
+    def __eq__(self, other):
+        return self.i == other.i and self.j == other.j
+    
+    def __hash__(self):
+        return hash((self.i, self.j))
 
 
 class Maze(object):
@@ -73,6 +79,10 @@ class Maze(object):
         number of rows of the maze
     q: int
         number of columns of the maze
+    method: str
+        algorithm for maze generation. Possible values: dfs (depth first search), 
+        prim
+        Default: dfs
     i0: int
         row-coordinate of the starting point for maze construction
         Default: 0
@@ -80,27 +90,58 @@ class Maze(object):
         column-coordinate of the starting point for maze construction
         Default: 0
     """
-    def __init__(self, p, q, i0=0, j0=0):
+    def __init__(self, p, q, method='dfs', i0=0, j0=0):
         self.p, self.q = p, q
         self.i0, self.j0 = i0, j0
+        self.method = method
         self.maze_map = [[Cell(i, j) for j in range(q)] for i in range(p)]
-        self.make()
+        self.make(method)
         
-    def make(self):
-        """ Build the maze using deep first search algorithm """
-        cell_stack = [self.maze_map[self.i0][self.j0]]
-        nv = 1
-        N = self.p * self.q
-        while nv < N:
-            neighbours = self.get_unvisited_neighbours(cell_stack[-1])
-            if not neighbours:
-                cell_stack.pop()
-                continue
-            cell_stack.append(random.choice(neighbours))
-            Cell.break_wall(cell_stack[-2], cell_stack[-1])
-            nv += 1
+    def make(self, method):
+        """ 
+        Build the maze using algorithm method 
+        
+        Parameters
+        ----------
+        
+        method: str
+            algorithm for maze generation. Possible values: dfs (depth first search), 
+            prim
+        """
+        if method == 'dfs':
+            cell_stack = [self.maze_map[self.i0][self.j0]]
+            nv = 1
+            N = self.p * self.q
+            while nv < N:
+                neighbours = self.get_neighbours(cell_stack[-1], kind='unvisited')
+                if not neighbours:
+                    cell_stack.pop()
+                    continue
+                cell_stack.append(random.choice(neighbours))
+                Cell.break_wall(cell_stack[-2], cell_stack[-1])
+                nv += 1
+        elif method == 'prim':
+            current_cell = self.maze_map[self.i0][self.j0]
+            current_cell.visited = True
+            cell_stack = self.get_neighbours(current_cell)
+            next_cell = random.choice(cell_stack)
+            Cell.break_wall(current_cell, next_cell)
+            next_cell.visited = True
+            cell_stack = list(set(cell_stack).union(self.get_neighbours(next_cell, kind='unvisited')))
+            cell_stack.remove(next_cell)
+            while cell_stack:
+                next_cell = random.choice(cell_stack)
+                next_cell.visited = True
+                valid_neighbours = [c for c in self.get_neighbours(next_cell) if c.visited]
+                if valid_neighbours:
+                    other_cell = random.choice(valid_neighbours)
+                    Cell.break_wall(next_cell, other_cell)
+                    cell_stack = list(set(cell_stack).union(self.get_neighbours(next_cell, kind='unvisited')))
+                cell_stack.remove(next_cell)
+        else:
+            raise ValueError('{0} is an unknow/unsupported method for maze generation'.format(method))
             
-    def get_unvisited_neighbours(self, cell):
+    def get_neighbours(self, cell, kind='all'):
         """ 
         Returns the unvisited neighbours of a cell
         
@@ -121,8 +162,14 @@ class Maze(object):
             i2, j2 = cell.i + di, cell.j + dj
             if (0 <= i2 < self.p) and (0 <= j2 < self.q):
                 neighbour = self.maze_map[i2][j2]
-                if all(neighbour.walls.values()):
+                if kind == 'all':
                     neighbours.append(neighbour)
+                elif kind == 'unvisited':
+                    if all(neighbour.walls.values()):
+                        neighbours.append(neighbour)
+                elif kind == 'visited':
+                    if not all(neighbour.walls.values()):
+                        neighbours.append(neighbour)
         return neighbours
     
     def get_image(self):
@@ -171,6 +218,6 @@ class Maze(object):
 
 
 if __name__ == "__main__":
-    m = Maze(4, 5)
+    m = Maze(10, 15, method='dfs')
     print(m)
     m.plot()
