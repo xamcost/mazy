@@ -26,6 +26,7 @@ class Cell(object):
         self.i, self.j = i, j
         self.walls = {'top':True, 'bottom':True, 'left':True, 'right':True}
         self.prim_visited = False
+        self.solve_visited = False
         self.type = None
     
     def break_wall(self, other):
@@ -36,7 +37,7 @@ class Cell(object):
         ----------
         
         other: Cell object
-            row position in maze
+            neighbouring cell
         """
         if self.i == other.i:
             if self.j < other.j:
@@ -66,6 +67,35 @@ class Cell(object):
             if w:
                 comp += 1
         return comp == 3
+    
+    def get_common_wall(self, other):
+        """ 
+        Return the common wall between cell self and cell other, with respect 
+        to self
+        
+        Parameters
+        ----------
+        
+        other: Cell object
+            neighbouring cell
+            
+        Returns
+        ---------- 
+        
+        str of corresponding wall
+        """
+        if self.i == other.i:
+            if self.j < other.j:
+                return 'right'
+            elif self.j > other.j:
+                return 'left'
+        elif self.j == other.j:
+            if self.i < other.i:
+                return 'bottom'
+            elif self.i > other.i:
+                return 'top'
+        else:
+            raise ValueError('{0} and {1} are not neighbouring cells'.format(self, other))
             
     def __repr__(self):
         return 'cell at ({0}, {1})'.format(self.i, self.j)
@@ -168,7 +198,7 @@ class Maze(object):
             start = (random.randint(0, self.p - 1), random.randint(0, self.q - 1))
         if end is None and not hasattr(self, 'end'):
             end = (random.randint(0, self.p - 1), random.randint(0, self.q - 1))
-            while end == self.start:
+            while end == start:
                 end = (random.randint(0, self.p - 1), random.randint(0, self.q - 1))
         self.start = start
         self.end = end
@@ -176,30 +206,59 @@ class Maze(object):
         self.maze_map[self.end[0]][self.end[1]].type = 'end'
         
         if method == 'dead_end_filler':
-            dead_ends = []
-            for i in range(self.p):
-                for j in range(self.q):
-                    c = self.maze_map[i][j]
-                    if c.isDeadEnd():
-                        if (i, j) != self.start:
-                            if (i, j) != self.end:
-                                dead_ends.append(c)
-                                c.type = 'direct_dead_end'
-            new_cells = []
-            for d in dead_ends:
-                current_cell = d
-                next_cell = self.get_neighbours(d, kind='accessible')
-                while len(next_cell) == 1:
-                    current_cell.type = 'direct_dead_end'
-                    if next_cell[0].type == 'start' or next_cell[0].type == 'end':
-                        break
-                    old_cell = current_cell
-                    current_cell = next_cell[0]
-                    next_cell = self.get_neighbours(current_cell, kind='accessible')
-                    next_cell = [c for c in next_cell if c != old_cell]
+            new_dead_ends = self.fill_dead_end(tag='direct_dead_end')
+            restore = new_dead_ends
+            while new_dead_ends:
+                for c, w in new_dead_ends:
+                    c.walls[w] = True
+                new_dead_ends = self.fill_dead_end(tag='indirect_dead_end')
+                restore = restore + new_dead_ends
+            for c, w in restore:
+                c.walls[w] = False
         else:
             raise ValueError('{0} is not a known/implemented method for maze solving'.format(method))
+            
+    def fill_dead_end(self, tag='direct_dead_end'):
+        """ 
+        Fills 'direct' dead ends in a maze 
         
+        Parameters
+        ----------
+        
+        tag: str
+            tag to assign to cell found in dead ends.
+            
+        Returns
+        ----------
+        
+        list of tuples of type (cell, wall) indicating walls to create to 
+        isolate dead ends.
+        """
+        dead_ends = []
+        for i in range(self.p):
+            for j in range(self.q):
+                c = self.maze_map[i][j]
+                if c.isDeadEnd() and not c.solve_visited:
+                    if (i, j) != self.start:
+                        if (i, j) != self.end:
+                            dead_ends.append(c)
+                            c.type = tag
+        walls_to_create = []
+        for d in dead_ends:
+            current_cell = d
+            next_cell = self.get_neighbours(d, kind='accessible')
+            while len(next_cell) == 1:
+                current_cell.type = tag
+                current_cell.solve_visited = True
+                old_cell = current_cell
+                current_cell = next_cell[0]
+                if next_cell[0].type == 'start' or next_cell[0].type == 'end':
+                    break
+                next_cell = self.get_neighbours(current_cell, kind='accessible')
+                next_cell = [c for c in next_cell if c != old_cell]
+            walls_to_create.append((old_cell, old_cell.get_common_wall(current_cell)))
+            walls_to_create.append((current_cell, current_cell.get_common_wall(old_cell)))
+        return walls_to_create
             
     def get_neighbours(self, cell, kind='all'):
         """ 
@@ -305,7 +364,8 @@ class Maze(object):
 
 
 if __name__ == "__main__":
-    m = Maze(5, 5, method='prim')
+    m = Maze(10, 10, method='dfs')
     print(m)
-    m.solve(start=(0, 0), end=(4, 4))
+    m.solve(start=(0, 0), end=(m.p - 1, m.q - 1))
+#    m.solve()
     m.plot()
