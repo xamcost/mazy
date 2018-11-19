@@ -40,19 +40,19 @@ class Cell(object):
             neighbouring cell
         """
         if self.i == other.i:
-            if self.j < other.j:
+            if self.j == other.j - 1:
                 self.walls['right'] = False
                 other.walls['left'] = False
-            elif self.j > other.j:
+            elif self.j == other.j + 1:
                 self.walls['left'] = False
                 other.walls['right'] = False
             else:
                 raise ValueError('Can break a wall only between two neighboring cells')
         elif self.j == other.j:
-            if self.i < other.i:
+            if self.i == other.i - 1:
                 self.walls['bottom'] = False
                 other.walls['top'] = False
-            elif self.i > other.i:
+            elif self.i == other.i + 1:
                 self.walls['top'] = False
                 other.walls['bottom'] = False
             else:
@@ -120,7 +120,7 @@ class Maze(object):
         number of columns of the maze
     method: str
         algorithm for maze generation. Possible values: dfs (depth first search), 
-        prim
+        prim, braid dfs (not purely braid !), braid prim
         Default: dfs
     i0: int
         row-coordinate of the starting point for maze construction
@@ -177,6 +177,12 @@ class Maze(object):
                     Cell.break_wall(next_cell, other_cell)
                     cell_stack = list(set(cell_stack).union(self.get_neighbours(next_cell, kind='unvisited')))
                 cell_stack.remove(next_cell)
+        elif method == 'braid dfs':
+            self.make('dfs')
+            self.break_dead_ends()
+        elif method == 'braid prim':
+            self.make('prim')
+            self.break_dead_ends()
         else:
             raise ValueError('{0} is an unknow/unsupported method for maze generation'.format(method))
             
@@ -259,6 +265,23 @@ class Maze(object):
             walls_to_create.append((old_cell, old_cell.get_common_wall(current_cell)))
             walls_to_create.append((current_cell, current_cell.get_common_wall(old_cell)))
         return walls_to_create
+    
+    def break_dead_ends(self):
+        for i in range(self.p):
+            for j in range(self.q):
+                c = self.maze_map[i][j]
+                if c.isDeadEnd():
+                    n = self.get_neighbours(c, 'accessible')[0]
+                    if n.i == c.i:
+                        i2 = i
+                        j2 = 2*c.j - n.j
+                    elif n.j == c.j:
+                        j2 = j
+                        i2 = 2*c.i - n.i
+                    try:
+                        Cell.break_wall(c, self.maze_map[i2][j2])
+                    except (ValueError, IndexError):
+                        pass
             
     def get_neighbours(self, cell, kind='all'):
         """ 
@@ -364,7 +387,7 @@ class Maze(object):
 
 
 if __name__ == "__main__":
-    m = Maze(10, 10, method='dfs')
+    m = Maze(20, 20, method='braid dfs')
     print(m)
     m.solve(start=(0, 0), end=(m.p - 1, m.q - 1))
 #    m.solve()
