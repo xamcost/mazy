@@ -8,6 +8,7 @@ Created on Sat Nov 17 19:40:06 2018
 
 import random
 import numpy as np
+from fractions import Fraction
 import matplotlib.pyplot as plt
 
 class Cell(object):
@@ -118,36 +119,33 @@ class Maze(object):
         number of rows of the maze
     q: int
         number of columns of the maze
-    method: str
+    method: str, optional
         algorithm for maze generation. Possible values: dfs (depth first search), 
-        prim, braid dfs (not purely braid !), braid prim
+        prim
         Default: dfs
-    i0: int
-        row-coordinate of the starting point for maze construction
+    braid_factor: float, optional
+        Between 0 and 1. If 0, perfect maze (only one solution). If 1, maze 
+        has no dead ends.
+        Default: 0
+    i0: int, optional
+        row-coordinate of the starting point for maze construction. 
         Default: 0
     j0: int
-        column-coordinate of the starting point for maze construction
+        column-coordinate of the starting point for maze construction. 
         Default: 0
     """
-    def __init__(self, p, q, method='dfs', i0=0, j0=0):
+    def __init__(self, p, q, method='dfs', braid_factor=0, i0=0, j0=0):
         self.p, self.q = p, q
         self.i0, self.j0 = i0, j0
         self.method = method
+        self.braid_factor = braid_factor
         self.maze_map = [[Cell(i, j) for j in range(q)] for i in range(p)]
-        self.make(method)
+        self.make()
         
-    def make(self, method):
-        """ 
-        Build the maze using algorithm method 
-        
-        Parameters
-        ----------
-        
-        method: str
-            algorithm for maze generation. Possible values: dfs (depth first search), 
-            prim
-        """
-        if method == 'dfs':
+    def make(self):
+        """ Build the maze using algorithm method. If braid_factor is 0, mazes are 
+        perfect and have only one solution. """
+        if self.method == 'dfs':
             cell_stack = [self.maze_map[self.i0][self.j0]]
             nv = 1
             N = self.p * self.q
@@ -159,7 +157,7 @@ class Maze(object):
                 cell_stack.append(random.choice(neighbours))
                 Cell.break_wall(cell_stack[-2], cell_stack[-1])
                 nv += 1
-        elif method == 'prim':
+        elif self.method == 'prim':
             current_cell = self.maze_map[self.i0][self.j0]
             current_cell.prim_visited = True
             cell_stack = self.get_neighbours(current_cell)
@@ -177,14 +175,9 @@ class Maze(object):
                     Cell.break_wall(next_cell, other_cell)
                     cell_stack = list(set(cell_stack).union(self.get_neighbours(next_cell, kind='unvisited')))
                 cell_stack.remove(next_cell)
-        elif method == 'braid dfs':
-            self.make('dfs')
-            self.break_dead_ends()
-        elif method == 'braid prim':
-            self.make('prim')
-            self.break_dead_ends()
         else:
-            raise ValueError('{0} is an unknow/unsupported method for maze generation'.format(method))
+            raise ValueError('{0} is an unknow/unsupported method for maze generation'.format(self.method))
+        self.break_dead_ends()  
             
     def solve(self, start=None, end=None, method='dead_end_filler'):
         """ 
@@ -223,6 +216,17 @@ class Maze(object):
                 c.walls[w] = False
         else:
             raise ValueError('{0} is not a known/implemented method for maze solving'.format(method))
+            
+    def get_dead_ends(self):
+        """ Returns the list of all dead ends in the maze, except starting and 
+        ending cells """
+        dead_ends = []
+        for i in range(self.p):
+            for j in range(self.q):
+                c = self.maze_map[i][j]
+                if c.isDeadEnd():
+                    dead_ends.append(c)
+        return dead_ends
             
     def fill_dead_end(self, tag='direct_dead_end'):
         """ 
@@ -267,21 +271,35 @@ class Maze(object):
         return walls_to_create
     
     def break_dead_ends(self):
-        for i in range(self.p):
-            for j in range(self.q):
-                c = self.maze_map[i][j]
-                if c.isDeadEnd():
+        """ Break dead ends in the maze. FUNCTION UNDER DEVELOPMENT: when braid_factor=1, 
+        the maze might still have a tiny amount of dead ends... So far, this function 
+        iterates over the dead ends, and choose randomly in a weighted list of boolean 
+        if it has to break the dead end or not"""
+        if self.braid_factor == 0:
+            return
+        else:
+            # Creating a list to weight the number of dead end, according to braid_factor
+            frac = Fraction.from_float(self.braid_factor)
+            frac = frac.limit_denominator(10)
+            rate = frac.denominator*[False]
+            for ind in range(frac.numerator):
+                rate[ind] = True
+#            dead_ends = random.shuffle(self.get_dead_ends())
+            dead_ends = self.get_dead_ends()
+            for c in dead_ends:
+                if c.isDeadEnd() and random.choice(rate):
                     n = self.get_neighbours(c, 'accessible')[0]
                     if n.i == c.i:
-                        i2 = i
+                        i2 = c.i
                         j2 = 2*c.j - n.j
                     elif n.j == c.j:
-                        j2 = j
+                        j2 = c.j
                         i2 = 2*c.i - n.i
                     try:
                         Cell.break_wall(c, self.maze_map[i2][j2])
                     except (ValueError, IndexError):
                         pass
+                
             
     def get_neighbours(self, cell, kind='all'):
         """ 
@@ -387,7 +405,7 @@ class Maze(object):
 
 
 if __name__ == "__main__":
-    m = Maze(20, 20, method='braid dfs')
+    m = Maze(30, 30, method='dfs', braid_factor=0.5)
     print(m)
     m.solve(start=(0, 0), end=(m.p - 1, m.q - 1))
 #    m.solve()
